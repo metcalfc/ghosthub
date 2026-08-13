@@ -11,7 +11,8 @@ test, and documentation-only changes are omitted.
   after connecting. It now leaves pane colors to the terminal instead of
   pinning them onto the session, which kept them exact only where the tmux
   client supported 24-bit color; remote hosts running older tmux showed a
-  256-color approximation instead.
+  256-color approximation instead. Selecting it also clears colors pinned
+  earlier, so existing sessions recover without being recreated.
 - Ghostty's built-in color schemes now ship with Ghosthub, so `theme =
   Catppuccin Macchiato` and every other bundled name resolves without first
   copying theme files into `~/.config/ghostty/themes`. Bundled shell

@@ -32,8 +32,9 @@ public struct TmuxPresentationStyle: Equatable, Sendable {
         self.paneColors = paneColors
     }
 
-    /// Applies Ghosthub's session chrome without pinning pane colors, so
-    /// panes keep exactly the colors the attached terminal renders.
+    /// Applies Ghosthub's session chrome and clears any pane colors it
+    /// previously pinned, so panes keep exactly the colors the attached
+    /// terminal renders.
     public static let followingTerminal = TmuxPresentationStyle(
         paneColors: nil
     )
@@ -74,10 +75,11 @@ public struct TmuxPresentationCommand: Equatable, Sendable {
                 ";", "set-option", "-t", target, option, value,
             ]
         }
-        for (option, value) in windowOptions {
-            result += [
-                ";", "set-option", "-w", "-t", target, option, value,
-            ]
+        for option in windowOptions {
+            result += [";", "set-option", "-w"]
+                + option.flags
+                + ["-t", target]
+                + option.arguments
         }
         return result
     }
@@ -93,23 +95,20 @@ public struct TmuxPresentationCommand: Equatable, Sendable {
             ).map(shellQuotedCommandArgument).joined(separator: " ")
             return "\(command) >/dev/null 2>&1 || :"
         }
-        // Enumerating windows only to run an empty loop body would not even
-        // parse, so a style without pane colors stops at session options.
-        guard !windowOptions.isEmpty else {
-            return commands.joined(separator: "; ")
-        }
         let listWindows = tmuxArguments(
             tmuxPath,
             "list-windows", "-t", target, "-F", "#{window_id}"
         ).map(shellQuotedCommandArgument).joined(separator: " ")
-        let setWindowOptions = windowOptions.map { option, value in
+        let setWindowOptions = windowOptions.map { option in
             let commandPrefix = tmuxArguments(
                 tmuxPath,
-                "set-option", "-w", "-t"
+                ["set-option", "-w"] + option.flags + ["-t"]
             ).map(shellQuotedCommandArgument).joined(separator: " ")
+            let optionArguments = option.arguments
+                .map(shellQuotedCommandArgument)
+                .joined(separator: " ")
             return "\(commandPrefix) \"$ghosthub_window\" "
-                + "\(shellQuotedCommandArgument(option)) "
-                + "\(shellQuotedCommandArgument(value)) "
+                + "\(optionArguments) "
                 + ">/dev/null 2>&1 || :"
         }.joined(separator: "; ")
         commands.append(
@@ -134,9 +133,6 @@ public struct TmuxPresentationCommand: Equatable, Sendable {
                 )
             )
         }
-        guard !windowOptions.isEmpty else {
-            return commands.joined(separator: " && ")
-        }
         let listWindows = identityCheckedCommand(
             tmuxPath: tmuxPath,
             expectedIdentity: expectedIdentity,
@@ -151,12 +147,14 @@ public struct TmuxPresentationCommand: Equatable, Sendable {
             "if [ \"$ghosthub_windows\" = \(mismatch) ]; then "
                 + "printf '%s\\n' \"$ghosthub_windows\"; exit 0; fi"
         )
-        let setWindowOptions = windowOptions.map { option, value in
+        let setWindowOptions = windowOptions.map { option in
             identityCheckedCommand(
                 tmuxPath: tmuxPath,
                 expectedIdentity: expectedIdentity,
                 shellTarget: "$ghosthub_window",
-                mutation: tmuxCommand("set-option", "-w", option, value)
+                mutation: tmuxCommand(
+                    ["set-option", "-w"] + option.flags + option.arguments
+                )
             )
         }.joined(separator: " && ")
         commands.append(
@@ -191,6 +189,10 @@ public struct TmuxPresentationCommand: Equatable, Sendable {
     }
 
     private func tmuxCommand(_ arguments: String...) -> String {
+        tmuxCommand(arguments)
+    }
+
+    private func tmuxCommand(_ arguments: [String]) -> String {
         arguments.map(shellQuotedCommandArgument).joined(separator: " ")
     }
 
@@ -208,17 +210,48 @@ public struct TmuxPresentationCommand: Equatable, Sendable {
         ]
     }
 
-    private var windowOptions: [(String, String)] {
-        guard let paneColors = style.paneColors else { return [] }
+    /// One `set-option -w` Ghosthub issues per window. Flags precede the
+    /// target so that unsetting keeps tmux's argument order.
+    private struct WindowOption {
+        let flags: [String]
+        let arguments: [String]
+
+        static func set(_ name: String, _ value: String) -> WindowOption {
+            WindowOption(flags: [], arguments: [name, value])
+        }
+
+        static func unset(_ name: String) -> WindowOption {
+            WindowOption(flags: ["-u"], arguments: [name])
+        }
+    }
+
+    private var windowOptions: [WindowOption] {
+        guard let paneColors = style.paneColors else {
+            // Clearing is not the same as skipping: a session styled by an
+            // earlier launch, or by a built-in theme before the user chose to
+            // follow the terminal, keeps those colors pinned until something
+            // unsets them.
+            return [
+                .unset("window-style"),
+                .unset("window-active-style"),
+            ]
+        }
         return [
-            ("window-style", paneColors.tmuxStyle),
-            ("window-active-style", paneColors.tmuxStyle),
+            .set("window-style", paneColors.tmuxStyle),
+            .set("window-active-style", paneColors.tmuxStyle),
         ]
     }
 
     private func tmuxArguments(
         _ tmuxPath: String,
         _ arguments: String...
+    ) -> [String] {
+        tmuxArguments(tmuxPath, arguments)
+    }
+
+    private func tmuxArguments(
+        _ tmuxPath: String,
+        _ arguments: [String]
     ) -> [String] {
         var result = [tmuxPath]
         if let socketName, !socketName.isEmpty {

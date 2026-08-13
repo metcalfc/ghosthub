@@ -68,12 +68,15 @@ killed target.
 
 Ghosthub applies the selected Tmux Theme when it creates a new bare tmux
 session. A built-in palette pins its configured colors onto the session's
-panes. Follow ghostty.conf pins nothing: the panes already render in the
-terminal's own colors for the current macOS appearance, including conditional
-light and dark themes, so Ghosthub applies only its session chrome. Pinning
-resolved colors there would hand tmux an exact color it may be unable to
-render, and a tmux client without RGB support repaints the pane in the nearest
-256-color approximation — visibly changing a pane that was already correct.
+panes. Follow ghostty.conf pins none and unsets any Ghosthub pinned before:
+the panes already render in the terminal's own colors for the current macOS
+appearance, including conditional light and dark themes. Pinning resolved
+colors there would hand tmux an exact color it may be unable to render, and a
+tmux client without RGB support repaints the pane in the nearest 256-color
+approximation — visibly changing a pane that was already correct. Clearing
+rather than merely skipping matters because tmux options live in the server:
+a session styled by an earlier launch, or by a built-in theme the user has
+since changed, would otherwise stay pinned for the rest of its life.
 Existing sessions retain their own appearance by default: Ghosthub neither
 places a client-local palette over them nor changes their tmux options.
 
@@ -83,8 +86,8 @@ attachment, that override resets the exact session's `status-style`,
 built-in palette also sets each existing window's default foreground and
 background. Both are applied within the attach command itself; kwt-backed
 workspaces style after kwt's own client attaches. Follow ghostty.conf sets no
-window colors, so it needs nothing from the surface and enumerates no windows.
-**Session -> Apply Theme to Current Session** and the
+window colors and unsets any it pinned earlier, so it needs nothing from the
+surface. **Session -> Apply Theme to Current Session** and the
 matching command-palette action apply the selected effective style immediately
 to the connected active workspace tmux attachment without changing the
 persistent preference or reconnecting. Console Panel terminals are not tmux

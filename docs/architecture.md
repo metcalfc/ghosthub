@@ -460,10 +460,11 @@ a parallel pane model; tmux remains layout and process authority. Native Windows
 psmux surfaces do not expose or intercept these split actions.
 
 Ghosthub applies the selected Tmux Theme when it creates a new bare session.
-Built-in themes pin fixed pane colors. Follow ghostty.conf pins none: panes
-already render in the attached terminal's colors, including the active
-conditional light or dark theme, so Ghosthub sets only its session chrome and
-leaves `window-style` alone. Pinning libghostty's resolved colors instead
+Built-in themes pin fixed pane colors. Follow ghostty.conf pins none and
+unsets `window-style` and `window-active-style` on each existing window, since
+tmux keeps options a previous launch or theme set. Panes then render in the
+attached terminal's colors, including the active conditional light or dark
+theme. Pinning libghostty's resolved colors instead
 would make tmux repaint each pane through the client's own capabilities, and a
 client without RGB support renders the nearest 256-color approximation rather
 than the exact color the terminal is already showing. The tradeoff is that

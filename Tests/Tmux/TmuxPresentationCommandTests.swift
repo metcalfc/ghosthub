@@ -193,8 +193,8 @@ struct TmuxPresentationCommandTests {
         #expect(invocationText.contains("window-active-style"))
     }
 
-    @Test("following the terminal pins no pane colors")
-    func followingTerminalOmitsPaneColors() {
+    @Test("following the terminal clears pinned pane colors")
+    func followingTerminalClearsPaneColors() {
         let command = TmuxPresentationCommand(
             sessionName: "review",
             socketName: nil,
@@ -211,10 +211,13 @@ struct TmuxPresentationCommandTests {
         #expect(command.contains("status-style"))
         #expect(command.contains("message-style"))
         #expect(command.contains("message-command-style"))
-        #expect(!command.contains("window-style"))
-        #expect(!command.contains("window-active-style"))
-        // Nothing to set per window, so the session is not enumerated at all.
-        #expect(!command.contains("list-windows"))
+        // Colors an earlier launch pinned are unset, not merely left unwritten,
+        // and no color of Ghosthub's own is named.
+        #expect(command.contains("'-u'\\'' '\\''window-style"))
+        #expect(command.contains("'-u'\\'' '\\''window-active-style"))
+        #expect(!command.contains("fg="))
+        #expect(!command.contains("bg="))
+        #expect(command.contains("list-windows"))
     }
 
     @Test(
