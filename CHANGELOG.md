@@ -7,6 +7,11 @@ test, and documentation-only changes are omitted.
 
 ### Fixed
 
+- The Follow ghostty.conf tmux theme no longer repaints panes a few seconds
+  after connecting. It now leaves pane colors to the terminal instead of
+  pinning them onto the session, which kept them exact only where the tmux
+  client supported 24-bit color; remote hosts running older tmux showed a
+  256-color approximation instead.
 - Ghostty's built-in color schemes now ship with Ghosthub, so `theme =
   Catppuccin Macchiato` and every other bundled name resolves without first
   copying theme files into `~/.config/ghostty/themes`. Bundled shell

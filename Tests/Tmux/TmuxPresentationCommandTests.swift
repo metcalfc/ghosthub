@@ -192,4 +192,94 @@ struct TmuxPresentationCommandTests {
         #expect(invocations.allSatisfy { $0.hasPrefix("if-shell\t") })
         #expect(invocationText.contains("window-active-style"))
     }
+
+    @Test("following the terminal pins no pane colors")
+    func followingTerminalOmitsPaneColors() {
+        let command = TmuxPresentationCommand(
+            sessionName: "review",
+            socketName: nil,
+            style: .followingTerminal
+        ).applyCommand(
+            tmuxPath: "/opt/homebrew/bin/tmux",
+            expectedIdentity: TmuxSessionIdentity(
+                serverPID: "31415",
+                sessionID: "$42",
+                createdAt: "1785182057"
+            )
+        )
+
+        #expect(command.contains("status-style"))
+        #expect(command.contains("message-style"))
+        #expect(command.contains("message-command-style"))
+        #expect(!command.contains("window-style"))
+        #expect(!command.contains("window-active-style"))
+        // Nothing to set per window, so the session is not enumerated at all.
+        #expect(!command.contains("list-windows"))
+    }
+
+    @Test(
+        "emitted styling runs as a shell script for either style",
+        arguments: [
+            TmuxPresentationStyle.followingTerminal,
+            TmuxPresentationStyle(
+                foreground: "#DDEEFF",
+                background: "#101820"
+            ),
+        ]
+    )
+    func emittedCommandsRun(style: TmuxPresentationStyle) throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fakeTmux = directory.appendingPathComponent("tmux")
+        try """
+        #!/bin/sh
+        case "$*" in
+          *list-windows*) printf '@1\n' ;;
+        esac
+        exit 0
+        """.write(to: fakeTmux, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: fakeTmux.path
+        )
+        let presentation = TmuxPresentationCommand(
+            sessionName: "review",
+            socketName: nil,
+            style: style
+        )
+
+        for command in [
+            presentation.bestEffortCommand(tmuxPath: fakeTmux.path),
+            presentation.applyCommand(
+                tmuxPath: fakeTmux.path,
+                expectedIdentity: TmuxSessionIdentity(
+                    serverPID: "31415",
+                    sessionID: "$42",
+                    createdAt: "1785182057"
+                )
+            ),
+        ] {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = ["-c", command]
+            let errors = Pipe()
+            process.standardError = errors
+            process.standardOutput = Pipe()
+
+            try process.run()
+            let errorText = String(
+                data: errors.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
+            process.waitUntilExit()
+
+            #expect(errorText.isEmpty, "\(command)")
+            #expect(process.terminationStatus == 0, "\(command)")
+        }
+    }
 }

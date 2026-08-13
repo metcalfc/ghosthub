@@ -25,7 +25,7 @@ private let newerStyle = TmuxPresentationStyle(
 
 @Suite("workspace tmux themes", .serialized)
 struct WorkspaceTmuxThemeTests {
-    @Test("follow-config uses effective libghostty colors")
+    @Test("follow-config leaves panes on the terminal's own colors")
     func followConfigStyle() {
         let preferences = TerminalAppearancePreferences(
             theme: .followConfig,
@@ -35,20 +35,19 @@ struct WorkspaceTmuxThemeTests {
             fontSize: 13
         )
 
+        // Panes already render the terminal's own colors, so following
+        // ghostty.conf pins none of its own and needs no resolved colors.
         #expect(TmuxPresentationStyleResolver.resolve(
             preferences: preferences,
             resolvedColors: TerminalResolvedColors(
                 foreground: "#112233",
                 background: "#EEF0F2"
             )
-        ) == TmuxPresentationStyle(
-            foreground: "#112233",
-            background: "#EEF0F2"
-        ))
+        ) == .followingTerminal)
         #expect(TmuxPresentationStyleResolver.resolve(
             preferences: preferences,
             resolvedColors: nil
-        ) == nil)
+        ) == .followingTerminal)
     }
 
     @Test("built-in themes ignore runtime colors")

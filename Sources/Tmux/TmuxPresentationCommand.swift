@@ -1,18 +1,42 @@
-/// Colors Ghosthub applies to tmux panes. Tmux otherwise answers OSC 10/11
-/// queries from the first attached client, which can describe another
-/// terminal's theme.
+/// How Ghosthub styles tmux panes.
+///
+/// A fixed palette pins pane colors, which also decides how tmux answers a
+/// pane's OSC 10/11 queries; tmux otherwise answers them from the first
+/// attached client, which can describe another terminal's theme. Pinning is
+/// wrong for a palette that is by definition the attached terminal's own:
+/// tmux renders a pinned color through the client's capabilities, so a client
+/// without RGB support repaints the pane in the nearest 256-color
+/// approximation instead of the exact color the terminal already shows.
 public struct TmuxPresentationStyle: Equatable, Sendable {
-    public let foreground: String
-    public let background: String
+    public struct PaneColors: Equatable, Sendable {
+        public let foreground: String
+        public let background: String
+
+        var tmuxStyle: String {
+            "fg=\(foreground),bg=\(background)"
+        }
+    }
+
+    /// Colors to pin onto panes, or `nil` to leave panes rendering in the
+    /// attached terminal's own colors.
+    public let paneColors: PaneColors?
 
     public init(foreground: String, background: String) {
-        self.foreground = foreground
-        self.background = background
+        paneColors = PaneColors(
+            foreground: foreground,
+            background: background
+        )
     }
 
-    var tmuxStyle: String {
-        "fg=\(foreground),bg=\(background)"
+    private init(paneColors: PaneColors?) {
+        self.paneColors = paneColors
     }
+
+    /// Applies Ghosthub's session chrome without pinning pane colors, so
+    /// panes keep exactly the colors the attached terminal renders.
+    public static let followingTerminal = TmuxPresentationStyle(
+        paneColors: nil
+    )
 }
 
 public struct TmuxPresentationCommand: Equatable, Sendable {
@@ -69,6 +93,11 @@ public struct TmuxPresentationCommand: Equatable, Sendable {
             ).map(shellQuotedCommandArgument).joined(separator: " ")
             return "\(command) >/dev/null 2>&1 || :"
         }
+        // Enumerating windows only to run an empty loop body would not even
+        // parse, so a style without pane colors stops at session options.
+        guard !windowOptions.isEmpty else {
+            return commands.joined(separator: "; ")
+        }
         let listWindows = tmuxArguments(
             tmuxPath,
             "list-windows", "-t", target, "-F", "#{window_id}"
@@ -104,6 +133,9 @@ public struct TmuxPresentationCommand: Equatable, Sendable {
                     option, value
                 )
             )
+        }
+        guard !windowOptions.isEmpty else {
+            return commands.joined(separator: " && ")
         }
         let listWindows = identityCheckedCommand(
             tmuxPath: tmuxPath,
@@ -177,9 +209,10 @@ public struct TmuxPresentationCommand: Equatable, Sendable {
     }
 
     private var windowOptions: [(String, String)] {
-        [
-            ("window-style", style.tmuxStyle),
-            ("window-active-style", style.tmuxStyle),
+        guard let paneColors = style.paneColors else { return [] }
+        return [
+            ("window-style", paneColors.tmuxStyle),
+            ("window-active-style", paneColors.tmuxStyle),
         ]
     }
 

@@ -48,8 +48,10 @@ can unexpectedly change zsh keymaps. It sets `TERM_PROGRAM` to `ghosthub`.
 ## Tmux themes
 
 The **Tmux Theme** picker in Settings supplies colors for new sessions created
-by Ghosthub. When **Follow ghostty.conf** is selected, the effective foreground
-and background follow the current light or dark appearance.
+by Ghosthub. A built-in theme paints panes in its own palette. **Follow
+ghostty.conf** leaves the panes alone so they keep showing your terminal
+colors, including the current light or dark appearance — which also keeps them
+exact on remote hosts whose tmux cannot render 24-bit color.
 
 Existing tmux sessions keep their own appearance by default. This avoids
 silently repainting a shared session for every attached client.

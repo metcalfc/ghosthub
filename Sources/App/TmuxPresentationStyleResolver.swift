@@ -13,10 +13,10 @@ enum TmuxPresentationStyleResolver {
                 background: spec.background.hexRGB
             )
         }
-        guard let resolvedColors else { return nil }
-        return TmuxPresentationStyle(
-            foreground: resolvedColors.foreground,
-            background: resolvedColors.background
-        )
+        // Follow ghostty.conf. Pinning libghostty's resolved colors onto the
+        // panes cannot improve on the colors the terminal already renders,
+        // and costs exactness wherever the tmux client lacks RGB support, so
+        // the panes are left alone and `resolvedColors` is not needed.
+        return .followingTerminal
     }
 }

@@ -460,18 +460,21 @@ a parallel pane model; tmux remains layout and process authority. Native Windows
 psmux surfaces do not expose or intercept these split actions.
 
 Ghosthub applies the selected Tmux Theme when it creates a new bare session.
-Built-in themes provide fixed colors; Follow ghostty.conf uses the effective
-foreground and background retained from libghostty's surface-scoped config
-callback, including the active conditional light or dark theme. Until a surface
-has delivered that state, no effective Follow ghostty.conf tmux style is
-available.
+Built-in themes pin fixed pane colors. Follow ghostty.conf pins none: panes
+already render in the attached terminal's colors, including the active
+conditional light or dark theme, so Ghosthub sets only its session chrome and
+leaves `window-style` alone. Pinning libghostty's resolved colors instead
+would make tmux repaint each pane through the client's own capabilities, and a
+client without RGB support renders the nearest 256-color approximation rather
+than the exact color the terminal is already showing. The tradeoff is that
+tmux then answers a pane's OSC 10/11 queries from the first attached client,
+which matters only when clients on differently themed terminals share one
+session — a case Follow ghostty.conf cannot satisfy anyway.
 
 Existing sessions retain their own appearance by default; Ghosthub neither
 places a client-local palette over them nor changes their tmux options. The
 persistent shared-session override applies the selected effective style on
-future attachments: built-in palettes within the attach command itself, and
-Follow ghostty.conf one-shot and best-effort once the new surface has published
-its resolved colors. The focused **Session -> Apply Theme to Current Session**
+future attachments within the attach command itself. The focused **Session -> Apply Theme to Current Session**
 menu item and its command-palette counterpart apply the same style immediately
 to the connected active workspace tmux attachment without reconnecting or
 changing that preference. The target may be a selected unbound session but is

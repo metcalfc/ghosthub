@@ -67,21 +67,24 @@ closing that exact current selection and navigating away only if it is the
 killed target.
 
 Ghosthub applies the selected Tmux Theme when it creates a new bare tmux
-session. A built-in palette supplies its configured colors. Follow ghostty.conf
-instead uses the effective foreground and background resolved by libghostty for
-the current macOS appearance, including conditional light and dark themes.
+session. A built-in palette pins its configured colors onto the session's
+panes. Follow ghostty.conf pins nothing: the panes already render in the
+terminal's own colors for the current macOS appearance, including conditional
+light and dark themes, so Ghosthub applies only its session chrome. Pinning
+resolved colors there would hand tmux an exact color it may be unable to
+render, and a tmux client without RGB support repaints the pane in the nearest
+256-color approximation — visibly changing a pane that was already correct.
 Existing sessions retain their own appearance by default: Ghosthub neither
 places a client-local palette over them nor changes their tmux options.
 
 Users may enable the persistent shared-session override. On each future
 attachment, that override resets the exact session's `status-style`,
-`message-style`, and `message-command-style` to terminal-default colors and
-sets each existing window's default foreground and background. A built-in
-palette is applied within the attach command itself; kwt-backed workspaces
-style after kwt's own client attaches. Follow ghostty.conf colors only exist
-once the new surface publishes its resolved state, so Ghosthub applies them
-one-shot and best-effort shortly after the attachment connects, verifying the
-session's identity first. **Session -> Apply Theme to Current Session** and the
+`message-style`, and `message-command-style` to terminal-default colors, and a
+built-in palette also sets each existing window's default foreground and
+background. Both are applied within the attach command itself; kwt-backed
+workspaces style after kwt's own client attaches. Follow ghostty.conf sets no
+window colors, so it needs nothing from the surface and enumerates no windows.
+**Session -> Apply Theme to Current Session** and the
 matching command-palette action apply the selected effective style immediately
 to the connected active workspace tmux attachment without changing the
 persistent preference or reconnecting. Console Panel terminals are not tmux

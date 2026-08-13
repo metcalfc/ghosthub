@@ -643,7 +643,7 @@ public struct SettingsView: View {
                 )
 
                 Text(
-                    "Ghosthub applies the selected colors when it creates a new tmux session. Existing sessions keep their current appearance unless the shared-session override is enabled. Follow ghostty.conf uses the effective foreground and background resolved from Ghosthub's config, including the active light or dark theme. The override changes tmux window, status, and message colors for every attached client. Session > Apply Theme to Current Session, also available in the command palette, applies the current selection immediately without enabling the override."
+                    "Ghosthub applies the selected colors when it creates a new tmux session. Existing sessions keep their current appearance unless the shared-session override is enabled. Follow ghostty.conf leaves pane colors to the terminal, so panes keep the colors Ghosthub already renders, including the active light or dark theme. The override changes tmux window, status, and message colors for every attached client. Session > Apply Theme to Current Session, also available in the command palette, applies the current selection immediately without enabling the override."
                 )
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
