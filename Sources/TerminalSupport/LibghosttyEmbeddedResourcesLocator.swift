@@ -1,24 +1,24 @@
 import Foundation
 
 public enum LibghosttyEmbeddedResourcesLocator {
-    private static let relativeResourcePath = [
-        ".build",
-        "libghostty",
-        "source",
-        "zig-out",
-        "share",
-        "ghostty",
-    ]
+    /// A place the emitted libghostty `share` tree can live, relative to a
+    /// candidate root. The compiled terminfo entry is the sentinel proving
+    /// the tree is a real resource bundle rather than a same-named directory.
+    private struct Layout {
+        let resources: [String]
+        let terminfoSentinel: [String]
 
-    private static let relativeTerminfoSentinel = [
-        ".build",
-        "libghostty",
-        "source",
-        "zig-out",
-        "share",
-        "terminfo",
-        "78",
-        "xterm-ghostty",
+        init(prefix: [String]) {
+            resources = prefix + ["ghostty"]
+            terminfoSentinel = prefix + ["terminfo", "78", "xterm-ghostty"]
+        }
+    }
+
+    private static let layouts = [
+        // Repo-local bootstrap output.
+        Layout(prefix: [".build", "libghostty", "source", "zig-out", "share"]),
+        // Packaged Ghosthub.app bundle.
+        Layout(prefix: ["Contents", "Resources"]),
     ]
 
     public static func configureEnvironmentIfNeeded(
@@ -51,12 +51,14 @@ public enum LibghosttyEmbeddedResourcesLocator {
         )
 
         for root in roots {
-            let resourcesURL = root.appendingPathComponents(relativeResourcePath)
-            let terminfoURL = root.appendingPathComponents(relativeTerminfoSentinel)
-            guard FileManager.default.fileExists(atPath: resourcesURL.path),
-                  FileManager.default.fileExists(atPath: terminfoURL.path)
-            else { continue }
-            return resourcesURL
+            for layout in layouts {
+                let resourcesURL = root.appendingPathComponents(layout.resources)
+                let terminfoURL = root.appendingPathComponents(layout.terminfoSentinel)
+                guard FileManager.default.fileExists(atPath: resourcesURL.path),
+                      FileManager.default.fileExists(atPath: terminfoURL.path)
+                else { continue }
+                return resourcesURL
+            }
         }
 
         return nil

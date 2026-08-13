@@ -432,6 +432,12 @@ session model and die with the app process.
 - Keep `TERM_PROGRAM=ghosthub`.
 - Do not leak launcher-terminal `EDITOR` or `VISUAL` into embedded shells.
 - Keep Ghosthub terminal config at `~/.config/ghosthub/ghostty.conf`.
+- Ship libghostty's emitted `share` tree with every build. The bootstrap emits
+  the bundled theme corpus, shell integration, and compiled terminfo; app
+  bundles stage `ghostty/` and `terminfo/` into `Contents/Resources`, and
+  Ghosthub points `GHOSTTY_RESOURCES_DIR` at whichever layout it finds.
+  Without it `theme = <name>` resolves only against a user's own
+  `~/.config/ghostty/themes`.
 - Keep the generated base config independent of tmux themes. Built-in Tmux
   Theme colors or libghostty's effective Follow ghostty.conf colors are applied
   at session creation, through the explicit shared-session override, or by the

@@ -36,7 +36,7 @@ class LibghosttyBootstrapTests(unittest.TestCase):
                 "-Dapp-runtime=none",
                 "-Demit-xcframework=true",
                 "-Demit-macos-app=false",
-                "-Demit-themes=false",
+                "-Demit-themes=true",
                 "-Di18n=false",
                 "-Dsentry=false",
                 "-Doptimize=Debug",
@@ -319,6 +319,7 @@ void ghostty_surface_complete_clipboard_request(ghostty_surface_t,
                             bootstrap.GHOSTHUB_GHOSTTY_BUNDLE_ID,
                         "i18nEnabled": False,
                         "sentryEnabled": False,
+                        "themesEmitted": True,
                         "ghosttyConfigLoadExport": True,
                         "surfaceInjectOutputExport": True,
                         "childWriteCallback": True,
@@ -1830,6 +1831,75 @@ pub fn init() void {
                 "libghostty artifacts were built with different Ghosthub isolation settings. Re-run `python3 tools/bootstrap_libghostty.py`.",
             )
 
+    def test_artifact_state_reports_stale_manifest_when_themes_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            metadata = self._create_repo_layout(repo_root)
+            paths = self._paths(repo_root)
+            artifacts = paths.cached_artifacts
+            self._write_ready_artifacts(artifacts, metadata)
+            manifest = json.loads(artifacts.manifest_path.read_text())
+            del manifest["themesEmitted"]
+            artifacts.manifest_path.write_text(json.dumps(manifest))
+
+            message = bootstrap.artifact_state_message(
+                artifacts,
+                metadata,
+                "native",
+                "Debug",
+            )
+
+            self.assertEqual(
+                message,
+                "libghostty artifacts were built without the bundled theme corpus. "
+                "Re-run `python3 tools/bootstrap_libghostty.py`.",
+            )
+
+    def test_ensure_emitted_resources_accepts_a_complete_share_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = self._paths(Path(tmpdir))
+            self._write_emitted_share_tree(paths)
+
+            bootstrap.ensure_emitted_resources(paths)
+
+    def test_ensure_emitted_resources_rejects_an_empty_theme_corpus(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = self._paths(Path(tmpdir))
+            share_root = self._write_emitted_share_tree(paths)
+            (share_root / "ghostty" / "themes" / "Catppuccin Macchiato").unlink()
+
+            with self.assertRaises(bootstrap.BootstrapError) as raised:
+                bootstrap.ensure_emitted_resources(paths)
+
+            self.assertIn("no bundled themes", str(raised.exception))
+
+    def test_ensure_emitted_resources_rejects_missing_compiled_terminfo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = self._paths(Path(tmpdir))
+            share_root = self._write_emitted_share_tree(paths)
+            shutil.rmtree(share_root / "terminfo")
+
+            with self.assertRaises(bootstrap.BootstrapError) as raised:
+                bootstrap.ensure_emitted_resources(paths)
+
+            self.assertIn("xterm-ghostty", str(raised.exception))
+
+    def _write_emitted_share_tree(self, paths: bootstrap.BootstrapPaths) -> Path:
+        share_root = Path(
+            paths.source_checkout_root,
+            *bootstrap.EMITTED_SHARE_RELATIVE_PATH,
+        )
+        themes = share_root.joinpath(*bootstrap.EMITTED_THEMES_RELATIVE_PATH)
+        themes.mkdir(parents=True)
+        (themes / "Catppuccin Macchiato").write_text("background = 24273a\n")
+        share_root.joinpath(
+            *bootstrap.EMITTED_SHELL_INTEGRATION_RELATIVE_PATH
+        ).mkdir(parents=True)
+        terminfo = share_root.joinpath(*bootstrap.EMITTED_TERMINFO_RELATIVE_PATH)
+        terminfo.parent.mkdir(parents=True)
+        terminfo.write_bytes(b"")
+        return share_root
+
     def test_main_quiet_noop_suppresses_already_ready_output(self) -> None:
         paths = mock.Mock()
         paths.vendor_metadata_path = Path("/tmp/ghostty.version.json")
@@ -1941,6 +2011,7 @@ pub fn init() void {
             f'  "requiredZigVersion": "{metadata.required_zig_version}",\n'
             '  "i18nEnabled": false,\n'
             '  "sentryEnabled": false,\n'
+            '  "themesEmitted": true,\n'
             f'  "optimize": "{optimize}",\n'
             f'  "xcframeworkTarget": "{xcframework_target}"\n'
             "}\n"

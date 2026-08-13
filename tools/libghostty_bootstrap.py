@@ -13,13 +13,23 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-GHOSTHUB_BOOTSTRAP_VERSION = 22
+GHOSTHUB_BOOTSTRAP_VERSION = 23
 GHOSTHUB_GHOSTTY_BUNDLE_ID = "com.ghosthub"
 GHOSTHUB_TERM_PROGRAM = "ghosthub"
 
 
 class BootstrapError(RuntimeError):
     pass
+
+
+# libghostty resolves themes, shell integration, and terminfo from a `share`
+# tree it locates by climbing from the running executable. `zig build` emits
+# that tree next to the xcframework, and both the repo-local dev layout and
+# the packaged app bundle are staged from it.
+EMITTED_SHARE_RELATIVE_PATH = ("zig-out", "share")
+EMITTED_THEMES_RELATIVE_PATH = ("ghostty", "themes")
+EMITTED_SHELL_INTEGRATION_RELATIVE_PATH = ("ghostty", "shell-integration")
+EMITTED_TERMINFO_RELATIVE_PATH = ("terminfo", "78", "xterm-ghostty")
 
 
 @dataclass(frozen=True)
@@ -115,7 +125,10 @@ def render_build_command(
         "-Dapp-runtime=none",
         "-Demit-xcframework=true",
         "-Demit-macos-app=false",
-        "-Demit-themes=false",
+        # The bundled iTerm2 theme corpus is the source for `theme = <name>`.
+        # Without it libghostty resolves only user themes under
+        # ~/.config/ghostty/themes.
+        "-Demit-themes=true",
         "-Di18n=false",
         "-Dsentry=false",
         f"-Doptimize={optimize}",
@@ -1418,6 +1431,11 @@ def artifact_state_message(
             "libghostty artifacts were built with different Ghosthub isolation settings. "
             "Re-run `python3 tools/bootstrap_libghostty.py`."
         )
+    if manifest.get("themesEmitted") is not True:
+        return (
+            "libghostty artifacts were built without the bundled theme corpus. "
+            "Re-run `python3 tools/bootstrap_libghostty.py`."
+        )
 
     # A current manifest can still cover a broken archive: a strict
     # libtool that drops misaligned members produces a fat lib without
@@ -1550,6 +1568,34 @@ def repair_fat_archives(paths: BootstrapPaths) -> None:
             )
 
 
+def ensure_emitted_resources(paths: BootstrapPaths) -> None:
+    """Fail the bootstrap when the build did not emit a usable share tree.
+
+    The theme corpus is a lazy Zig dependency, so a build can otherwise
+    succeed while silently omitting it, and every `theme = <name>` lookup
+    then falls through to the user theme directory.
+    """
+    share_root = Path(paths.source_checkout_root, *EMITTED_SHARE_RELATIVE_PATH)
+    themes = share_root.joinpath(*EMITTED_THEMES_RELATIVE_PATH)
+    if not themes.is_dir() or not any(themes.iterdir()):
+        raise BootstrapError(
+            f"Ghostty emitted no bundled themes at {themes}. "
+            "Verify network access to the pinned iTerm2-Color-Schemes "
+            "dependency and rerun `python3 tools/bootstrap_libghostty.py`."
+        )
+
+    for relative in (
+        EMITTED_SHELL_INTEGRATION_RELATIVE_PATH,
+        EMITTED_TERMINFO_RELATIVE_PATH,
+    ):
+        path = share_root.joinpath(*relative)
+        if not path.exists():
+            raise BootstrapError(
+                f"Ghostty build output is missing {path}. "
+                "Rerun `python3 tools/bootstrap_libghostty.py`."
+            )
+
+
 def copy_outputs(paths: BootstrapPaths) -> None:
     source_xcframework = paths.source_checkout_root / "macos" / "GhosttyKit.xcframework"
     source_header = paths.source_checkout_root / "include" / "ghostty.h"
@@ -1611,6 +1657,7 @@ def write_manifest(
         "macosLoginQuiet": True,
         "termProgram": GHOSTHUB_TERM_PROGRAM,
         "requiredZigVersion": metadata.required_zig_version,
+        "themesEmitted": True,
         "i18nEnabled": False,
         "sentryEnabled": False,
         "zigVersion": zig_version,
@@ -1673,6 +1720,7 @@ def bootstrap(
                 "Metal Toolchain (`xcodebuild -downloadComponent MetalToolchain`)."
             ) from error
         repair_fat_archives(paths)
+        ensure_emitted_resources(paths)
         copy_outputs(paths)
         write_manifest(paths, metadata, zig_version, xcframework_target, optimize)
         rebuilt_variant = True

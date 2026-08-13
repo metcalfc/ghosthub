@@ -1,5 +1,6 @@
 import importlib.util
 import plistlib
+import shutil
 import stat
 import sys
 from pathlib import Path
@@ -44,6 +45,25 @@ def make_executable(path: Path, contents: str = "#!/bin/sh\nexit 0\n") -> Path:
     path.write_text(contents, encoding="utf-8")
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
     return path
+
+
+def make_libghostty_share_dir(tmp_path: Path) -> Path:
+    share_dir = tmp_path / "libghostty-share"
+    themes = share_dir / "ghostty" / "themes"
+    themes.mkdir(parents=True)
+    (themes / "Catppuccin Macchiato").write_text(
+        "background = 24273a\n", encoding="utf-8"
+    )
+    shell_integration = share_dir / "ghostty" / "shell-integration" / "zsh"
+    shell_integration.mkdir(parents=True)
+    (shell_integration / "ghostty-integration").write_text(
+        "# integration\n", encoding="utf-8"
+    )
+    terminfo = share_dir / "terminfo" / "78"
+    terminfo.mkdir(parents=True)
+    (terminfo / "xterm-ghostty").write_bytes(b"terminfo")
+    (terminfo / "xterm-ghostty-alias").symlink_to("xterm-ghostty")
+    return share_dir
 
 
 def make_release_inputs(
@@ -184,6 +204,7 @@ def test_assemble_app_bundle_stages_icon_and_binary(tmp_path):
         app_license_path=app_license,
         kwt_binary=kwt_binary,
         kwt_variants_dir=kwt_variants_dir,
+        libghostty_share_dir=make_libghostty_share_dir(tmp_path),
         third_party_licenses_dir=licenses_dir,
         copyright=COPYRIGHT_NOTICE,
         kwt_version="0.1.0",
@@ -229,6 +250,17 @@ def test_assemble_app_bundle_stages_icon_and_binary(tmp_path):
     assert (
         app_root / "Contents" / "Resources" / "Ghosthub.icns"
     ).read_bytes() == b"icns"
+    # libghostty finds these by climbing from the bundled executable, so the
+    # emitted names and their position under Resources are the contract.
+    resources = app_root / "Contents" / "Resources"
+    assert (
+        resources / "ghostty" / "themes" / "Catppuccin Macchiato"
+    ).read_text() == "background = 24273a\n"
+    assert (
+        resources / "ghostty" / "shell-integration" / "zsh" / "ghostty-integration"
+    ).is_file()
+    assert (resources / "terminfo" / "78" / "xterm-ghostty").is_file()
+    assert (resources / "terminfo" / "78" / "xterm-ghostty-alias").is_symlink()
     assert {path.name for path in app_root.iterdir()} == {"Contents"}
     assert (
         app_root
@@ -299,6 +331,7 @@ def test_release_info_plist_contains_update_configuration(tmp_path):
         app_license_path=app_license,
         kwt_binary=kwt_binary,
         kwt_variants_dir=kwt_variants_dir,
+        libghostty_share_dir=make_libghostty_share_dir(tmp_path),
         third_party_licenses_dir=licenses_dir,
         copyright=COPYRIGHT_NOTICE,
         kwt_version="0.1.0",
@@ -368,6 +401,7 @@ def test_assemble_app_bundle_replaces_existing_bundle_contents(tmp_path):
         app_license_path=app_license,
         kwt_binary=kwt_binary,
         kwt_variants_dir=kwt_variants_dir,
+        libghostty_share_dir=make_libghostty_share_dir(tmp_path),
         third_party_licenses_dir=licenses_dir,
         copyright=COPYRIGHT_NOTICE,
         kwt_version="0.1.0",
@@ -379,3 +413,42 @@ def test_assemble_app_bundle_replaces_existing_bundle_contents(tmp_path):
     assert (
         app_root / "Contents" / "Resources" / "Ghosthub.icns"
     ).read_bytes() == b"new-icon"
+
+
+def test_assemble_app_bundle_rejects_a_share_dir_without_themes(tmp_path):
+    assemble = load_module()
+    source_bin_dir = tmp_path / "bin"
+    app_binary = make_executable(source_bin_dir / "Ghosthub")
+    app_root = tmp_path / "Ghosthub.app"
+    icon_path = tmp_path / "Ghosthub.icns"
+    icon_path.write_bytes(b"icns")
+    app_license, kwt_binary, kwt_variants_dir, licenses_dir = make_release_inputs(
+        tmp_path,
+        source_bin_dir,
+    )
+    share_dir = make_libghostty_share_dir(tmp_path)
+    shutil.rmtree(share_dir / "ghostty" / "themes")
+
+    with pytest.raises(ValueError, match="libghostty share directory"):
+        assemble.assemble_app_bundle(
+            source_bin_dir=source_bin_dir,
+            app_binary=app_binary,
+            app_root=app_root,
+            bundle_id="com.ghosthub",
+            display_name="Ghosthub",
+            version="0.1.0",
+            build_version="123",
+            min_macos="14.0",
+            icon_path=icon_path,
+            app_license_path=app_license,
+            kwt_binary=kwt_binary,
+            kwt_variants_dir=kwt_variants_dir,
+            libghostty_share_dir=share_dir,
+            third_party_licenses_dir=licenses_dir,
+            copyright=COPYRIGHT_NOTICE,
+            kwt_version="0.1.0",
+            kwt_source_revision="abc123",
+            remote_kwt_source_revision="def456",
+        )
+
+    assert not app_root.exists()
