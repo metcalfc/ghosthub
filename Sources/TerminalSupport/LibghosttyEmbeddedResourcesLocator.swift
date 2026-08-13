@@ -15,30 +15,51 @@ public enum LibghosttyEmbeddedResourcesLocator {
     }
 
     private static let layouts = [
-        // Repo-local bootstrap output.
-        Layout(prefix: [".build", "libghostty", "source", "zig-out", "share"]),
+        // Repo-local staged bootstrap artifacts.
+        Layout(prefix: [".build", "libghostty", "share"]),
         // Packaged Ghosthub.app bundle.
         Layout(prefix: ["Contents", "Resources"]),
     ]
 
+    /// Points `GHOSTTY_RESOURCES_DIR` at Ghosthub's own resources.
+    ///
+    /// Ghostty exports this variable into every shell it runs, so launching
+    /// Ghosthub from a Ghostty terminal otherwise inherits Ghostty.app's
+    /// themes and shell integration — and a release libghostty trusts the
+    /// variable ahead of its own executable-path discovery. Ghosthub's
+    /// resources therefore override an inherited value, and an inherited
+    /// value is used only when Ghosthub has no resources of its own.
     public static func configureEnvironmentIfNeeded(
         executablePath: String = ProcessInfo.processInfo.arguments.first ?? "",
         currentDirectoryPath: String = FileManager.default.currentDirectoryPath
     ) -> URL? {
-        if let existing = ProcessInfo.processInfo.environment["GHOSTTY_RESOURCES_DIR"],
-           !existing.isEmpty {
-            return URL(fileURLWithPath: existing, isDirectory: true)
-        }
-
-        guard let resourcesURL = resolveResourcesDirectory(
+        guard let resourcesURL = effectiveResourcesDirectory(
             executablePath: executablePath,
-            currentDirectoryPath: currentDirectoryPath
-        ) else {
-            return nil
-        }
+            currentDirectoryPath: currentDirectoryPath,
+            inheritedResourcesPath: ProcessInfo.processInfo
+                .environment["GHOSTTY_RESOURCES_DIR"]
+        ) else { return nil }
 
         setenv("GHOSTTY_RESOURCES_DIR", resourcesURL.path, 1)
         return resourcesURL
+    }
+
+    static func effectiveResourcesDirectory(
+        executablePath: String,
+        currentDirectoryPath: String,
+        inheritedResourcesPath: String?
+    ) -> URL? {
+        if let resourcesURL = resolveResourcesDirectory(
+            executablePath: executablePath,
+            currentDirectoryPath: currentDirectoryPath
+        ) {
+            return resourcesURL
+        }
+
+        guard let inheritedResourcesPath, !inheritedResourcesPath.isEmpty else {
+            return nil
+        }
+        return URL(fileURLWithPath: inheritedResourcesPath, isDirectory: true)
     }
 
     static func resolveResourcesDirectory(

@@ -38,7 +38,7 @@ extension LibghosttySurfaceRuntimeCallbacks {
 struct MockLibghosttyLayout {
     /// Where the emitted libghostty `share` tree sits under the layout root.
     enum SharePrefix: String {
-        case repoLocalBootstrap = ".build/libghostty/source/zig-out/share"
+        case repoLocalBootstrap = ".build/libghostty/share"
         case packagedAppBundle = "Contents/Resources"
     }
 

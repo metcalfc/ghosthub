@@ -13,9 +13,9 @@ LIBGHOSTTY_GIT ?=
 LIBGHOSTTY_XCRUN ?=
 LIBGHOSTTY_XCFRAMEWORK_TARGET ?= aarch64
 LIBGHOSTTY_OPTIMIZE ?= Debug
-# Themes, shell integration, and terminfo emitted by the staged libghostty
-# variant. Bundles copy this tree into Contents/Resources.
-LIBGHOSTTY_SHARE_DIR ?= $(abspath .build/libghostty/source/zig-out/share)
+# Themes, shell integration, and terminfo staged by the libghostty bootstrap.
+# Bundles copy this tree into Contents/Resources.
+LIBGHOSTTY_SHARE_DIR ?= $(abspath .build/libghostty/share)
 DIST_ROOT ?= dist
 DEBUG_ROOT ?= $(DIST_ROOT)/debug
 RELEASE_ROOT ?= $(DIST_ROOT)/release

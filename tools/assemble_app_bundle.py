@@ -12,6 +12,7 @@ TOOLS_DIR = Path(__file__).resolve().parent
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
+from libghostty_bootstrap import share_tree_problem
 from stage_release_app_bundles import stage_bundles
 
 
@@ -25,24 +26,13 @@ SPARKLE_PUBLIC_ED_KEY = "MKL5y44upnEoZrnm3VLLDocsBTD+3DgnH161eEQPhMQ="
 # under Contents/Resources with their emitted names. Without `ghostty/themes`
 # every `theme = <name>` resolves only against ~/.config/ghostty/themes.
 LIBGHOSTTY_RESOURCE_TREES = ("ghostty", "terminfo")
-LIBGHOSTTY_REQUIRED_SUBTREES = (
-    Path("ghostty", "themes"),
-    Path("ghostty", "shell-integration"),
-    Path("terminfo", "78", "xterm-ghostty"),
-)
 
 
 def resolve_libghostty_resource_trees(share_dir: Path) -> dict[str, Path]:
     """Validate the emitted libghostty `share` tree before staging it."""
-    missing = [
-        str(share_dir / relative)
-        for relative in LIBGHOSTTY_REQUIRED_SUBTREES
-        if not (share_dir / relative).exists()
-    ]
-    if missing:
-        raise ValueError(
-            "libghostty share directory is incomplete: " + ", ".join(missing)
-        )
+    problem = share_tree_problem(share_dir)
+    if problem is not None:
+        raise ValueError(f"libghostty share directory is incomplete: {problem}")
     return {name: share_dir / name for name in LIBGHOSTTY_RESOURCE_TREES}
 
 

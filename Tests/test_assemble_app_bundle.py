@@ -415,7 +415,37 @@ def test_assemble_app_bundle_replaces_existing_bundle_contents(tmp_path):
     ).read_bytes() == b"new-icon"
 
 
-def test_assemble_app_bundle_rejects_a_share_dir_without_themes(tmp_path):
+def remove_theme_corpus(share_dir: Path) -> None:
+    shutil.rmtree(share_dir / "ghostty" / "themes")
+
+
+def empty_theme_corpus(share_dir: Path) -> None:
+    for theme in (share_dir / "ghostty" / "themes").iterdir():
+        theme.unlink()
+
+
+def replace_theme_corpus_with_a_file(share_dir: Path) -> None:
+    themes = share_dir / "ghostty" / "themes"
+    shutil.rmtree(themes)
+    themes.write_text("not a directory\n", encoding="utf-8")
+
+
+def replace_terminfo_sentinel_with_a_directory(share_dir: Path) -> None:
+    sentinel = share_dir / "terminfo" / "78" / "xterm-ghostty"
+    sentinel.unlink()
+    sentinel.mkdir()
+
+
+@pytest.mark.parametrize(
+    "corrupt",
+    [
+        remove_theme_corpus,
+        empty_theme_corpus,
+        replace_theme_corpus_with_a_file,
+        replace_terminfo_sentinel_with_a_directory,
+    ],
+)
+def test_assemble_app_bundle_rejects_an_unusable_share_dir(tmp_path, corrupt):
     assemble = load_module()
     source_bin_dir = tmp_path / "bin"
     app_binary = make_executable(source_bin_dir / "Ghosthub")
@@ -427,7 +457,7 @@ def test_assemble_app_bundle_rejects_a_share_dir_without_themes(tmp_path):
         source_bin_dir,
     )
     share_dir = make_libghostty_share_dir(tmp_path)
-    shutil.rmtree(share_dir / "ghostty" / "themes")
+    corrupt(share_dir)
 
     with pytest.raises(ValueError, match="libghostty share directory"):
         assemble.assemble_app_bundle(

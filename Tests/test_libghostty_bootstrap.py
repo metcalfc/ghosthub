@@ -297,6 +297,7 @@ void ghostty_surface_complete_clipboard_request(ghostty_surface_t,
             artifacts = bootstrap.ArtifactPaths.from_root(workdir)
             slice_dir = artifacts.xcframework_path / "macos-arm64"
             slice_dir.mkdir(parents=True)
+            self._write_share_tree(artifacts.share_path)
             artifacts.header_path.parent.mkdir(parents=True)
             artifacts.header_path.write_text("// header\n")
             artifacts.modulemap_path.write_text("module GhosttyKit {}\n")
@@ -319,7 +320,6 @@ void ghostty_surface_complete_clipboard_request(ghostty_surface_t,
                             bootstrap.GHOSTHUB_GHOSTTY_BUNDLE_ID,
                         "i18nEnabled": False,
                         "sentryEnabled": False,
-                        "themesEmitted": True,
                         "ghosttyConfigLoadExport": True,
                         "surfaceInjectOutputExport": True,
                         "childWriteCallback": True,
@@ -1831,16 +1831,14 @@ pub fn init() void {
                 "libghostty artifacts were built with different Ghosthub isolation settings. Re-run `python3 tools/bootstrap_libghostty.py`.",
             )
 
-    def test_artifact_state_reports_stale_manifest_when_themes_missing(self) -> None:
+    def test_artifact_state_reports_missing_theme_corpus(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_root = Path(tmpdir)
             metadata = self._create_repo_layout(repo_root)
             paths = self._paths(repo_root)
             artifacts = paths.cached_artifacts
             self._write_ready_artifacts(artifacts, metadata)
-            manifest = json.loads(artifacts.manifest_path.read_text())
-            del manifest["themesEmitted"]
-            artifacts.manifest_path.write_text(json.dumps(manifest))
+            shutil.rmtree(artifacts.share_path.joinpath(*bootstrap.THEMES_RELATIVE_PATH))
 
             message = bootstrap.artifact_state_message(
                 artifacts,
@@ -1849,53 +1847,116 @@ pub fn init() void {
                 "Debug",
             )
 
-            self.assertEqual(
-                message,
-                "libghostty artifacts were built without the bundled theme corpus. "
-                "Re-run `python3 tools/bootstrap_libghostty.py`.",
+            self.assertIsNotNone(message)
+            assert message is not None
+            self.assertIn("libghostty resources are incomplete", message)
+            self.assertIn("theme corpus", message)
+
+    def test_artifact_state_reports_pruned_resources_despite_current_manifest(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            metadata = self._create_repo_layout(repo_root)
+            paths = self._paths(repo_root)
+            artifacts = paths.cached_artifacts
+            self._write_ready_artifacts(artifacts, metadata)
+            self.assertIsNone(
+                bootstrap.artifact_state_message(
+                    artifacts, metadata, "native", "Debug"
+                )
+            )
+            shutil.rmtree(artifacts.share_path)
+
+            message = bootstrap.artifact_state_message(
+                artifacts,
+                metadata,
+                "native",
+                "Debug",
             )
 
-    def test_ensure_emitted_resources_accepts_a_complete_share_tree(self) -> None:
+            self.assertIsNotNone(message)
+            assert message is not None
+            self.assertIn("libghostty resources are incomplete", message)
+
+    def test_share_tree_problem_rejects_an_empty_theme_corpus(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            share_root = self._write_share_tree(Path(tmpdir))
+            (share_root.joinpath(*bootstrap.THEMES_RELATIVE_PATH)
+             / "Catppuccin Macchiato").unlink()
+
+            problem = bootstrap.share_tree_problem(share_root)
+
+            self.assertIsNotNone(problem)
+            assert problem is not None
+            self.assertIn("empty", problem)
+
+    def test_share_tree_problem_rejects_a_theme_directory_that_is_a_file(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            share_root = self._write_share_tree(Path(tmpdir))
+            themes = share_root.joinpath(*bootstrap.THEMES_RELATIVE_PATH)
+            shutil.rmtree(themes)
+            themes.write_text("not a directory\n")
+
+            problem = bootstrap.share_tree_problem(share_root)
+
+            self.assertIsNotNone(problem)
+            assert problem is not None
+            self.assertIn("missing", problem)
+
+    def test_share_tree_problem_rejects_a_terminfo_sentinel_that_is_a_directory(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            share_root = self._write_share_tree(Path(tmpdir))
+            terminfo = share_root.joinpath(*bootstrap.TERMINFO_RELATIVE_PATH)
+            terminfo.unlink()
+            terminfo.mkdir()
+
+            problem = bootstrap.share_tree_problem(share_root)
+
+            self.assertIsNotNone(problem)
+            assert problem is not None
+            self.assertIn("terminfo", problem)
+
+    def test_share_tree_problem_accepts_a_complete_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            share_root = self._write_share_tree(Path(tmpdir))
+
+            self.assertIsNone(bootstrap.share_tree_problem(share_root))
+
+    def test_ensure_emitted_resources_rejects_an_incomplete_build(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             paths = self._paths(Path(tmpdir))
-            self._write_emitted_share_tree(paths)
+            share_root = self._write_share_tree(
+                Path(paths.source_checkout_root, *bootstrap.EMITTED_SHARE_RELATIVE_PATH)
+            )
+            shutil.rmtree(share_root.joinpath(*bootstrap.THEMES_RELATIVE_PATH))
+
+            with self.assertRaises(bootstrap.BootstrapError) as raised:
+                bootstrap.ensure_emitted_resources(paths)
+
+            self.assertIn("iTerm2-Color-Schemes", str(raised.exception))
+
+    def test_ensure_emitted_resources_accepts_a_complete_build(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = self._paths(Path(tmpdir))
+            self._write_share_tree(
+                Path(paths.source_checkout_root, *bootstrap.EMITTED_SHARE_RELATIVE_PATH)
+            )
 
             bootstrap.ensure_emitted_resources(paths)
 
-    def test_ensure_emitted_resources_rejects_an_empty_theme_corpus(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            paths = self._paths(Path(tmpdir))
-            share_root = self._write_emitted_share_tree(paths)
-            (share_root / "ghostty" / "themes" / "Catppuccin Macchiato").unlink()
-
-            with self.assertRaises(bootstrap.BootstrapError) as raised:
-                bootstrap.ensure_emitted_resources(paths)
-
-            self.assertIn("no bundled themes", str(raised.exception))
-
-    def test_ensure_emitted_resources_rejects_missing_compiled_terminfo(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            paths = self._paths(Path(tmpdir))
-            share_root = self._write_emitted_share_tree(paths)
-            shutil.rmtree(share_root / "terminfo")
-
-            with self.assertRaises(bootstrap.BootstrapError) as raised:
-                bootstrap.ensure_emitted_resources(paths)
-
-            self.assertIn("xterm-ghostty", str(raised.exception))
-
-    def _write_emitted_share_tree(self, paths: bootstrap.BootstrapPaths) -> Path:
-        share_root = Path(
-            paths.source_checkout_root,
-            *bootstrap.EMITTED_SHARE_RELATIVE_PATH,
-        )
-        themes = share_root.joinpath(*bootstrap.EMITTED_THEMES_RELATIVE_PATH)
+    def _write_share_tree(self, share_root: Path) -> Path:
+        themes = share_root.joinpath(*bootstrap.THEMES_RELATIVE_PATH)
         themes.mkdir(parents=True)
-        (themes / "Catppuccin Macchiato").write_text("background = 24273a\n")
-        share_root.joinpath(
-            *bootstrap.EMITTED_SHELL_INTEGRATION_RELATIVE_PATH
-        ).mkdir(parents=True)
-        terminfo = share_root.joinpath(*bootstrap.EMITTED_TERMINFO_RELATIVE_PATH)
+        (themes / "Catppuccin Macchiato").write_text("background = #24273a\n")
+        share_root.joinpath(*bootstrap.SHELL_INTEGRATION_RELATIVE_PATH).mkdir(
+            parents=True
+        )
+        terminfo = share_root.joinpath(*bootstrap.TERMINFO_RELATIVE_PATH)
         terminfo.parent.mkdir(parents=True)
         terminfo.write_bytes(b"")
         return share_root
@@ -1994,6 +2055,7 @@ pub fn init() void {
     ) -> None:
         artifacts.root.mkdir(parents=True, exist_ok=True)
         artifacts.xcframework_path.mkdir(parents=True)
+        self._write_share_tree(artifacts.share_path)
         artifacts.header_path.parent.mkdir(parents=True, exist_ok=True)
         artifacts.header_path.write_text("// header\n")
         artifacts.modulemap_path.write_text("module GhosttyKit {}\n")
@@ -2011,7 +2073,6 @@ pub fn init() void {
             f'  "requiredZigVersion": "{metadata.required_zig_version}",\n'
             '  "i18nEnabled": false,\n'
             '  "sentryEnabled": false,\n'
-            '  "themesEmitted": true,\n'
             f'  "optimize": "{optimize}",\n'
             f'  "xcframeworkTarget": "{xcframework_target}"\n'
             "}\n"
